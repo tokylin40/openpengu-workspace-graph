@@ -1,10 +1,134 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
-<meta charset="utf-8">
-<title>Test</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPEN PENGU 系統架構地圖</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e17;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;height:100vh}
+#graph-container{width:100vw;height:100vh;position:relative}
+svg{width:100%;height:100%}
+.node{cursor:pointer}
+.node circle{stroke-width:2px;transition:r .2s}
+.node:hover circle{stroke-width:4px}
+.node text{font-size:10px;fill:#e6edf3;pointer-events:none;text-anchor:middle;dominant-baseline:hanging}
+.link{stroke-opacity:.4}
+#tooltip{position:fixed;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 16px;font-size:13px;pointer-events:none;display:none;z-index:100;max-width:320px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+#tooltip .tt-name{font-weight:700;font-size:15px;color:#58a6ff;margin-bottom:6px}
+#tooltip .tt-lines{color:#8b949e;font-size:12px;margin-bottom:4px}
+#tooltip .tt-desc{color:#c9d1d9;line-height:1.4;margin-top:6px}
+#tooltip .tt-cat{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;margin-top:6px}
+#legend{position:fixed;top:20px;left:20px;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px 18px;font-size:12px;z-index:50;min-width:200px}
+#legend h3{font-size:13px;color:#58a6ff;margin-bottom:10px;border-bottom:1px solid #30363d;padding-bottom:6px}
+.legend-item{display:flex;align-items:center;gap:8px;margin:5px 0}
+.legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.legend-label{color:#c9d1d9}
+#summary{position:fixed;top:20px;right:20px;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px 18px;font-size:12px;z-index:50;min-width:220px}
+#summary h3{font-size:13px;color:#58a6ff;margin-bottom:10px;border-bottom:1px solid #30363d;padding-bottom:6px}
+.stat-row{display:flex;justify-content:space-between;margin:4px 0}
+.stat-label{color:#8b949e}
+.stat-value{color:#4ade80;font-weight:600}
+#title-bar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#1a2332,#0d1a2d);border:1px solid #30363d;border-radius:10px;padding:10px 24px;text-align:center;z-index:50}
+#title-bar h1{font-size:16px;color:#58a6ff;font-weight:700}
+#title-bar p{font-size:11px;color:#8b949e;margin-top:2px}
+.entry-ring{stroke:#ffd700;stroke-width:2.5;stroke-dasharray:4,3;fill:none}
+#loading{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#58a6ff;font-size:18px;z-index:200;text-align:center}
+#loading .spin{font-size:32px;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
 </head>
 <body>
-<p>Graph</p>
+<div id=loading><div class=spin>⚙️</div><div>系統架構地圖生成中...</div></div>
+<div id=graph-container></div>
+<div id=tooltip><div class=tt-name></div><div class=tt-lines></div><div class=tt-desc></div><div class=tt-cat></div></div>
+<div id=legend><h3>📦 腳本分類</h3>
+<div class=legend-item><div class=legend-dot style=background:#4ade80></div><span class=legend-label>每日自動化</span></div>
+<div class=legend-item><div class=legend-dot style=background:#f472b6></div><span class=legend-label>PENGU 生態</span></div>
+<div class=legend-item><div class=legend-dot style=background:#818cf8></div><span class=legend-label>社交媒體</span></div>
+<div class=legend-item><div class=legend-dot style=background:#fb923c></div><span class=legend-label>系統維運</span></div>
+<div class=legend-item><div class=legend-dot style=background:#a78bfa></div><span class=legend-label>自我優化</span></div>
+<div class=legend-item><div class=legend-dot style=background:#22d3ee></div><span class=legend-label>工具腳本</span></div>
+<div class=legend-item><div class=legend-dot style="background:#ffd700;border:2px solid #ffd700;width:8px;height:8px"></div><span class=legend-label>⚡ 觸發入口</span></div>
+</div>
+<div id=summary><h3>📊 系統概覽</h3>
+<div class=stat-row><span class=stat-label>腳本總數</span><span class=stat-value id=s-scripts>–</span></div>
+<div class=stat-row><span class=stat-label>總行數</span><span class=stat-value id=s-lines>–</span></div>
+<div class=stat-row><span class=stat-label>觸發入口</span><span class=stat-value id=s-entries>–</span></div>
+<div class=stat-row><span class=stat-label>分類數</span><span class=stat-value id=s-cats>–</span></div>
+<div class=stat-row><span class=stat-label>依賴關係</span><span class=stat-value id=s-links>–</span></div>
+</div>
+<div id=title-bar><h1>🐧 OPEN PENGU 系統架構地圖</h1><p>Drag nodes · Hover for details · Scroll to zoom · D3 Force Layout</p></div>
+<script src=https://d3js.org/d3.v7.min.js></script>
+<script>
+const CATEGORIES={daily:{label:"每日自動化",color:"#4ade80"},pengu:{label:"PENGU 生態",color:"#f472b6"},social:{label:"社交媒體",color:"#818cf8"},ops:{label:"系統維運",color:"#fb923c"},selfopt:{label:"自我優化",color:"#a78bfa"},tools:{label:"工具腳本",color:"#22d3ee"}};
+const ENTRY=["run_morning_report.sh","self_optimization_llm.py","system_monitor.py","price_monitor.py","daily_memory_backup.py","backup-openclaw.sh","lcm_health_check.py"];
+const NODES=[
+{id:"morning_report_v9.py",cat:"daily",lines:1033,desc:"早報核心引擎：Google News、幣價、Polymarket、BTC K線圖、DeFi Llama、天氣預報，金句"},
+{id:"run_morning_report_v14.py",cat:"daily",lines:696,desc:"早報執行器：呼叫 morning_report_v9、Notion 同步、Telegram 通知"},
+{id:"run_morning_report.sh",cat:"daily",lines:345,desc:"早報 Shell 包裝腳本，cron 07:30 觸發"},
+{id:"morning_report_wizard.py",cat:"daily",lines:233,desc:"早報精靈：引導式生成、章節選擇"},
+{id:"polymarket_report.py",cat:"daily",lines:330,desc:"Polymarket 機率分析：odds 爬蟲、事件分類、圖表生成"},
+{id:"defi_llama.py",cat:"daily",lines:313,desc:"DeFi Llama：TVL 排行、分類數據、Yields 排行"},
+{id:"get_daily_signals.py",cat:"daily",lines:263,desc:"Binance Smart Money API：訊號評分、HTML 格式化輸出至早報 Premium 章節"},
+{id:"crypto_market_report.py",cat:"pengu",lines:533,desc:"加密市場報告：幣種篩選、BTC 宏觀分析、倉位變化、情緒指數"},
+{id:"pengu_alpha_signal.py",cat:"pengu",lines:466,desc:"Alpha 信號：情緒-資金錯位策略、Binance 鯨魚監控、訂單簿深度分析"},
+{id:"pengu_monitor.py",cat:"pengu",lines:316,desc:"PENGU 生態監控：早晨檢查、鯨魚錢包追蹤、訂單簿失衡、持倉分布"},
+{id:"pengu_ta.py",cat:"pengu",lines:280,desc:"PENGU 技術分析：RSI(14)、MACD(12,26,9)、SMA、買賣信號判斷"},
+{id:"crypto_trading_signal.py",cat:"pengu",lines:232,desc:"交易信號：Smart Money 追蹤、觸發價計算、訊號評分"},
+{id:"twitter_content_research.py",cat:"social",lines:453,desc:"Twitter 素材研究：web_search、BTC/Pudgy/AI 標籤分類、Notion 同步"},
+{id:"notion_sync.py",cat:"social",lines:355,desc:"Notion 同步：推特文章資料庫、PENGU 監控、Threads 內容"},
+{id:"system_monitor.py",cat:"ops",lines:241,desc:"系統監控：四層防護（Pattern kill、Per-process、Load avg、溫度）、白名單機制"},
+{id:"lcm_health_check.py",cat:"ops",lines:219,desc:"LCM 健康檢查：summary 時間追蹤、SQLite 查詢、超時警報 (>2h → 重啟)"},
+{id:"price_monitor.py",cat:"ops",lines:216,desc:"價格監控：BTC/PENGU/ETH、±5% / ±8% 門檻警報、防轟炸機制 (30min/次)"},
+{id:"restart_with_warning.py",cat:"ops",lines:154,desc:"重啟警告：容器重啟前通知、pending_restart.json 管理"},
+{id:"daily_memory_backup.py",cat:"ops",lines:262,desc:"每日對話記憶備份：session 過濾、關鍵字分類、濃縮存檔"},
+{id:"backup-openclaw.sh",cat:"ops",lines:230,desc:"完整備份：.openclaw 目錄壓縮、排除垃圾、tar.gz 輸出"},
+{id:"system_backup.sh",cat:"ops",lines:176,desc:"每日系統備份：最新 5 份滾動覆蓋"},
+{id:"self_optimization_llm.py",cat:"selfopt",lines:431,desc:"凌晨自我優化引擎：02:00-06:00 crons、系統優化、錯誤分析、技能發現、向量萃取"},
+{id:"youtube_transcribe.py",cat:"tools",lines:156,desc:"YouTube 轉錄：yt-dlp 字幕、Whisper fallback、繁體中文優先"},
+{id:"screenshot_window.py",cat:"tools",lines:166,desc:"Linux 桌面截圖：xwd、XWD→PNG 轉換、視窗 ID 查找"},
+{id:"skill_status_check.py",cat:"tools",lines:205,desc:"技能狀態檢查：技能清單、安全審核、連接狀態"}
+];
+const LINKS=[
+{source:"run_morning_report.sh",target:"run_morning_report_v14.py"},
+{source:"run_morning_report_v14.py",target:"morning_report_v9.py"},
+{source:"morning_report_v9.py",target:"get_daily_signals.py"},
+{source:"morning_report_v9.py",target:"polymarket_report.py"},
+{source:"morning_report_v9.py",target:"defi_llama.py"},
+{source:"morning_report_v9.py",target:"twitter_content_research.py"},
+{source:"run_morning_report_v14.py",target:"notion_sync.py"},
+{source:"pengu_alpha_signal.py",target:"pengu_monitor.py"},
+{source:"crypto_market_report.py",target:"pengu_ta.py"},
+{source:"crypto_market_report.py",target:"crypto_trading_signal.py"},
+{source:"system_monitor.py",target:"lcm_health_check.py"},
+{source:"lcm_health_check.py",target:"restart_with_warning.py"},
+{source:"twitter_content_research.py",target:"notion_sync.py"},
+{source:"self_optimization_llm.py",target:"twitter_content_research.py"}
+];
+const totalLines=NODES.reduce((a,n)=>a+n.lines,0);
+document.getElementById("s-scripts").textContent=NODES.length;
+document.getElementById("s-lines").textContent=totalLines.toLocaleString();
+document.getElementById("s-entries").textContent=ENTRY.length;
+document.getElementById("s-cats").textContent=Object.keys(CATEGORIES).length;
+document.getElementById("s-links").textContent=LINKS.length;
+const width=window.innerWidth,height=window.innerHeight;
+const svg=d3.select("#graph-container").append("svg").attr("viewBox",`0 0 ${width} ${height}`).call(d3.zoom().on("zoom",g=>d3.select("g.graph").attr("transform",d3.event.transform))).on("dblclick.zoom",null);
+const g=svg.append("g").attr("class","graph");
+const defs=svg.append("defs");
+Object.keys(CATEGORIES).forEach(cat=>{defs.append("marker").attr("id",`arrow-${cat}`).attr("viewBox","0 -5 10 10").attr("refX",18).attr("refY",0).attr("markerWidth",6).attr("markerHeight",6).attr("orient","auto").append("path").attr("d","M0,-5L10,0L0,5").attr("fill",CATEGORIES[cat].color).attr("opacity",0.6)});
+const sim=d3.forceSimulation(NODES).force("link",d3.forceLink(LINKS).id(d=>d.id).distance(130).strength(0.5)).force("charge",d3.forceManyBody().strength(-400)).force("center",d3.forceCenter(width/2,height/2)).force("collision",d3.forceCollide().radius(d=>radius(d.lines)+20)).force("x",d3.forceX(width/2).strength(0.03)).force("y",d3.forceY(height/2).strength(0.03));
+function radius(lines){return Math.max(14,Math.min(40,14+lines/40))}
+const link=g.append("g").selectAll("line").data(LINKS).join("line").attr("class","link").attr("stroke",d=>CATEGORIES[NODES.find(n=>n.id===(typeof d.source==="object"?d.source.id:d.source))?.cat||"tools"].color).attr("stroke-width",1.5);
+const node=g.append("g").selectAll("g").data(NODES).join("g").attr("class","node").call(d3.drag().on("start",(e,d)=>{if(!e.active)sim.alphaTarget(.3).restart();d.fx=d.x;d.fy=d.y}).on("drag",(e,d)=>{d.fx=e.x;d.fy=e.y}).on("end",(e,d)=>{if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null}));
+node.filter(d=>ENTRY.includes(d.id)).insert("circle",":first-child").attr("r",d=>radius(d.lines)+5).attr("class","entry-ring");
+node.append("circle").attr("r",d=>radius(d.lines)).attr("fill",d=>CATEGORIES[d.cat].color+"22").attr("stroke",d=>CATEGORIES[d.cat].color);
+node.append("text").attr("dy",d=>-(radius(d.lines)+4)).text(d=>d.lines>=1000?`${(d.lines/1000).toFixed(1)}k`:d.lines).attr("text-anchor","middle").attr("fill",d=>CATEGORIES[d.cat].color).attr("font-size","9px").attr("font-weight","bold");
+node.append("text").text(d=>d.id.replace(".py","").replace(".sh","")).attr("text-anchor","middle").attr("dy",d=>radius(d.lines)+13).attr("fill","#e6edf3").attr("font-size","10px");
+const tooltip=document.getElementById("tooltip");
+node.on("mouseover",(e,d)=>{tooltip.style.display="block";tooltip.querySelector(".tt-name").textContent=d.id;tooltip.querySelector(".tt-lines").textContent=`${d.lines.toLocaleString()} 行`;tooltip.querySelector(".tt-desc").textContent=d.desc;const cat=CATEGORIES[d.cat];const catEl=tooltip.querySelector(".tt-cat");catEl.textContent=cat.label;catEl.style.background=cat.color+"22";catEl.style.color=cat.color;if(ENTRY.includes(d.id))catEl.textContent+=" ⚡ 觸發入口";tooltip.style.left=(e.clientX+15)+"px";tooltip.style.top=(e.clientY-10)+"px"}).on("mousemove",e=>{tooltip.style.left=(e.clientX+15)+"px";tooltip.style.top=(e.clientY-10)+"px"}).on("mouseout",()=>{tooltip.style.display="none"});
+sim.on("tick",()=>{link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y).attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);node.attr("transform",d=>`translate(${d.x},${d.y})`)});
+document.getElementById("loading").style.display="none";
+</script>
 </body>
 </html>
