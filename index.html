@@ -1,1 +1,34 @@
-PLACEHOLDER_HTML_WILL_BE_REPLACED
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head><meta charset="UTF-8"><title>OPEN PENGU 工作圖譜</title>
+<style>
+body{font-family:system-ui;background:#0d1117;color:#e6edf3;margin:0}
+canvas{position:fixed;top:0;left:0}
+#t{position:fixed;top:0;left:0;right:0;background:rgba(13,17,23,.95);border-bottom:1px solid #30363d;padding:8px 16px;font-size:14px;color:#58a6ff;z-index:10}
+#s{color:#8b949e;font-size:12px}
+</style>
+</head>
+<body>
+<div id="t">🐧 OPEN PENGU 工作圖譜 <span id="s"></span></div>
+<canvas id="c"></canvas>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+var N=[],L=[],C={};
+fetch('graph_data.json').then(r=>r.json()).then(d=>{
+  N=d.nodes;L=d.links;C=d.comms;
+  document.getElementById('s').textContent=N.length+' 節點 · '+L.length+' 連線';
+  var pal=['#f87171','#fb923c','#fbbf24','#34d399','#38bdf8','#a78bfa','#f472b6'];
+  var cv=document.getElementById('c'),ctx=cv.getContext('2d');
+  cv.width=innerWidth;cv.height=innerHeight;
+  var z=d3.zoom().scaleExtent([.1,10]).on('zoom',e=>{T=e.transform});
+  d3.select(cv).call(z);
+  var S=d3.forceSimulation(N).force('link',d3.forceLink(L).id(d=>d.id).distance(60)).force('charge',d3.forceManyBody(-100)).force('center',d3.forceCenter(cv.width/2,cv.height/2));
+  var T={x:0,y:0,k:1};
+  function draw(){ctx.clearRect(0,0,cv.width,cv.height);ctx.save();ctx.translate(T.x,T.y);ctx.scale(T.k,T.k);
+    L.forEach(l=>{ctx.beginPath();ctx.moveTo(l.source.x,l.source.y);ctx.lineTo(l.target.x,l.target.y);ctx.strokeStyle='rgba(88,166,255,.2)';ctx.lineWidth=.8;ctx.stroke();});
+    N.forEach(n=>{ctx.beginPath();ctx.arc(n.x||0,n.y||0,5,0,Math.PI*2);ctx.fillStyle=pal[(n.comm||0)%pal.length];ctx.fill();});
+    ctx.restore();}
+  S.on('tick',draw);
+});
+</script>
+</body></html>
